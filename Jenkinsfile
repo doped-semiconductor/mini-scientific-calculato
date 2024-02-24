@@ -2,8 +2,13 @@ pipeline {
     agent any
     
     environment{
+        DOCKERHUB_CREDENTIALS= credentials('docker-hub-creds')
         DOCKER_IMAGE_NAME = 'mini-calculator'
         GITHUB_REPO_URL = 'https://github.com/doped-semiconductor/mini-scientific-calculator.git'
+    }
+    
+    tools{
+        maven 'mvn'
     }
 
     stages {
@@ -14,7 +19,9 @@ pipeline {
         }
         stage('Maven Build') {
             steps {
-                sh 'mvn clean package'
+                script{
+                    sh 'mvn clean package'
+                }
             }
         }
         
@@ -31,18 +38,25 @@ pipeline {
         stage('Docker Build') {
             steps {
                 script{
-                    docker.build("${DOCKER_IMAGE_NAME}:${BUILD_NUMBER}", '.')
+                    sh 'docker build -t ${DOCKER_IMAGE_NAME}:${BUILD_NUMBER} .'
                 }
             }
         }
         stage('Docker Push') {
             steps {
                 script{
-                    docker.withRegistry('', 'docker-hub-getsreya') {
-                        sh 'docker tag %DOCKER_IMAGE_NAME%:%BUILD_NUMBER% getsreya/%DOCKER_IMAGE_NAME%:latest'
-                        sh 'docker push getsreya/%DOCKER_IMAGE_NAME%'
-                    }
+                    sh 'echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin'
+                    sh 'docker tag ${DOCKER_IMAGE_NAME}:${BUILD_NUMBER} getsreya/${DOCKER_IMAGE_NAME}:latest'
+                    sh 'docker push getsreya/${DOCKER_IMAGE_NAME}'
                  }
+            }
+        }
+        stage('Ansible') {
+            steps {
+                script{
+                    sh 'docker rmi -f getsreya/${DOCKER_IMAGE_NAME}'
+                    sh 'ansible-playbook -i inventory deploy.yml'
+                }
             }
         }
     }
